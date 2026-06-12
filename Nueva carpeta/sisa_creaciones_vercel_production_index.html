@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sisa Creaciones ERP - Producción Definitiva</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts - Inter & Montserrat -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .font-display {
+      font-family: 'Montserrat', sans-serif;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen antialiased flex flex-col justify-between">
+  
+  <div id="root" class="min-h-screen flex flex-col justify-between"></div>
+
+  <!-- React ESM Import map -->
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom": "https://esm.sh/react-dom@18.2.0"
+      }
+    }
+  </script>
+
+  <!-- Main Application Module script -->
+  <script type="module">
+    import React, { useState, useEffect, useRef, useMemo } from 'react';
+    import ReactDOM from 'react-dom';
+    
+    // Import individual Firebase modules directly
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, doc, collection, getDoc, setDoc, updateDoc, deleteDoc, query, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // Embedded Firebase Credentials matching Sisa Creaciones production project
+    const firebaseConfig = {
+      projectId: "sisa-creaciones-erp",
+      appId: "1:543198881797:web:c0a61b7ce997787d4dd46c",
+      apiKey: "AIzaSyC8gIZKdPTsgrLAoky6JT4CEZyXJyO3Neo",
+      authDomain: "sisa-creaciones-erp.firebaseapp.com",
+      firestoreDatabaseId: "ai-studio-90428b85-dda5-4f75-8480-5699c90b2234",
+      storageBucket: "sisa-creaciones-erp.firebasestorage.app",
+      messagingSenderId: "543198881797"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+    const auth = getAuth(app);
+
+    // Reusable Lucide Icon component for React Play CDN
+    function Icon({ name, className = "w-5 h-5" }) {
+      useEffect(() => {
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+      }, [name]);
+      return React.createElement('i', { 'data-lucide': name, className });
+    }
+
+    function App() {
+      const [user, setUser] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [activeTab, setActiveTab] = useState("dashboard");
+      const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+      
+      // Real-time Firestore States
+      const [usersList, setUsersList] = useState([]);
+      const [rawMaterials, setRawMaterials] = useState([]);
+      const [finishedProducts, setFinishedProducts] = useState([]);
+      const [productionOrders, setProductionOrders] = useState([]);
+      const [fixedCosts, setFixedCosts] = useState([]);
+
+      // Auth validation
+      useEffect(() => {
+        const unsubAuth = onAuthStateChanged(auth, async (fbUser) => {
+          setLoading(true);
+          if (fbUser) {
+            try {
+              const docRef = doc(db, "users", fbUser.uid);
+              const docSnap = await getDoc(docRef);
+              if (docSnap.exists()) {
+                setUser(docSnap.data());
+              } else {
+                const profile = {
+                  uid: fbUser.uid,
+                  email: fbUser.email || "",
+                  name: fbUser.displayName || fbUser.email.split('@')[0],
+                  role: fbUser.email === "maksjhon@gmail.com" ? "admin" : "operator",
+                  createdAt: new Date().toISOString()
+                };
+                await setDoc(docRef, profile);
+                setUser(profile);
+              }
+            } catch (err) {
+              console.error("Auth fetch error:", err);
+              setUser({ uid: fbUser.uid, email: fbUser.email, name: fbUser.email, role: "operator" });
+            }
+          } else {
+            setUser(null);
+          }
+          setLoading(false);
+        });
+        return () => unsubAuth();
+      }, []);
+
+      // Realtime Collections Listeners
+      useEffect(() => {
+        if (!user) return;
+
+        // 1. Users & Personnel onSnapshot Listener
+        const unsubUsers = onSnapshot(collection(db, "users"), (snap) => {
+          const list = [];
+          snap.forEach((d) => {
+            const data = d.data();
+            if (data.status !== "Eliminado") {
+              list.push({
+                uid: data.uid || d.id,
+                name: data.name || data.nombreCompleto || "Operario Sin Nombre",
+                email: data.email || data.correo || "",
+                role: data.role || "operator",
+                cedula: data.cedula || data.cedulaRuc || "",
+                phone: data.phone || data.telefono || "",
+                status: data.status || "Activo",
+                createdAt: data.createdAt || new Date().toISOString()
+              });
+            }
+          });
+          setUsersList(list);
+        }, (err) => console.error("Real-time users error:", err));
+
+        // 2. Raw Materials Listener
+        const unsubMat = onSnapshot(collection(db, "raw_materials"), (snap) => {
+          const list = [];
+          snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+          setRawMaterials(list);
+        });
+
+        // 3. Finished Products Listener
+        const unsubProd = onSnapshot(collection(db, "finished_products"), (snap) => {
+          const list = [];
+          snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+          setFinishedProducts(list);
+        });
+
+        // 4. Production Orders Listener
+        const unsubOrd = onSnapshot(collection(db, "production_orders"), (snap) => {
+          const list = [];
+          snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+          setProductionOrders(list);
+        });
+
+        // 5. Fixed Costs Listener
+        const unsubCosts = onSnapshot(collection(db, "fixed_costs"), (snap) => {
+          const list = [];
+          snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+          setFixedCosts(list);
+        });
+
+        return () => {
+          unsubUsers();
+          unsubMat();
+          unsubProd();
+          unsubOrd();
+          unsubCosts();
+        };
+      }, [user]);
+
+      // Metrics computations
+      const rawMaterialsCapital = useMemo(() => {
+        return rawMaterials.reduce((acc, m) => acc + ((m.quantity || 0) * (m.costPerUnit || 0)), 0);
+      }, [rawMaterials]);
+
+      const finishedProductsSalesPotential = useMemo(() => {
+        return finishedProducts.reduce((acc, p) => acc + ((p.stock || 0) * (p.salePrice || 0)), 0);
+      }, [finishedProducts]);
+
+      const activeOrdersCount = useMemo(() => {
+        return productionOrders.filter(o => o.status !== "Listo" && o.status !== "Entregado").length;
+      }, [productionOrders]);
+
+      const fixedCostsTotal = useMemo(() => {
+        return fixedCosts.reduce((acc, c) => acc + (Number(c.amount) || 0), 0);
+      }, [fixedCosts]);
+
+      const handleLogout = async () => {
+        try {
+          await signOut(auth);
+          setUser(null);
+        } catch (err) {
+          alert("Error de desvinculación: " + err.message);
+        }
+      };
+
+      if (loading) {
+        return React.createElement('div', { className: "min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-white" },
+          React.createElement('div', { className: "w-16 h-16 bg-slate-800 rounded-2xl flex items-center justify-center mb-6 border border-emerald-500/20 shadow-xl" },
+            React.createElement(Icon, { name: "scissors", className: "w-9 h-9 text-emerald-400 rotate-45 animate-bounce" })
+          ),
+          React.createElement('h2', { className: "text-2xl font-bold font-display tracking-wider text-emerald-400" }, "Sisa Creaciones"),
+          React.createElement('p', { className: "text-xs text-slate-400 mt-2 font-mono uppercase tracking-widest" }, "Conectando con Servidor Vercel-Firestore..."),
+          React.createElement('div', { className: "w-48 bg-slate-800 h-1 rounded-full mt-6 overflow-hidden" },
+            React.createElement('div', { className: "h-full bg-emerald-500 rounded-full animate-pulse w-full" })
+          )
+        );
+      }
+
+      // Guest / Login Form
+      if (!user) {
+        return React.createElement(LoginView, { onLogin: setUser });
+      }
+
+      return React.createElement('div', { className: "flex flex-col lg:flex-row h-screen overflow-hidden bg-slate-950 font-sans text-slate-200" },
+        
+        // Navigation bar Left Panel (Sidebar)
+        React.createElement('aside', { className: `fixed lg:relative inset-y-0 left-0 bg-slate-900 border-r border-slate-800 w-64 z-50 transform ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} transition-transform duration-200 ease-in-out flex flex-col justify-between shadow-2xl` },
+          React.createElement('div', { className: "p-6" },
+            React.createElement('div', { className: "flex items-center gap-3 mb-8" },
+              React.createElement('div', { className: "p-2 bg-emerald-500/10 rounded-lg text-emerald-400" },
+                React.createElement(Icon, { name: "scissors", className: "w-6 h-6 rotate-45" })
+              ),
+              React.createElement('span', { className: "text-lg font-bold font-display tracking-tight text-white" }, "Sisa Creaciones")
+            ),
+            React.createElement('nav', { className: "space-y-1.5" },
+              React.createElement(SidebarNavButton, { active: activeTab === "dashboard", label: "Tablero", icon: "layout-dashboard", onClick: () => { setActiveTab("dashboard"); setMobileMenuOpen(false); } }),
+              React.createElement(SidebarNavButton, { active: activeTab === "inventory", label: "Inventarios", icon: "box", onClick: () => { setActiveTab("inventory"); setMobileMenuOpen(false); } }),
+              React.createElement(SidebarNavButton, { active: activeTab === "orders", label: "Pedidos / Órdenes", icon: "clipboard-list", onClick: () => { setActiveTab("orders"); setMobileMenuOpen(false); } }),
+              React.createElement(SidebarNavButton, { active: activeTab === "costs", label: "Costos Fijos", icon: "dollar-sign", onClick: () => { setActiveTab("costs"); setMobileMenuOpen(false); } }),
+              user.role === "admin" && React.createElement(SidebarNavButton, { active: activeTab === "admin", label: "Personal", icon: "users", onClick: () => { setActiveTab("admin"); setMobileMenuOpen(false); } }),
+              React.createElement(SidebarNavButton, { active: activeTab === "attendance", label: "Asistencia", icon: "clock", onClick: () => { setActiveTab("attendance"); setMobileMenuOpen(false); } })
+            )
+          ),
+          React.createElement('div', { className: "p-6 border-t border-slate-800 bg-slate-950/40" },
+            React.createElement('div', { className: "flex items-center gap-3 mb-4" },
+              React.createElement('div', { className: "w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center text-white font-bold uppercase ring-2 ring-emerald-500/20" },
+                user.name ? user.name[0] : "O"
+              ),
+              React.createElement('div', { className: "truncate" },
+                React.createElement('p', { className: "text-sm font-semibold text-white truncate" }, user.name),
+                React.createElement('span', { className: "text-[10px] text-emerald-400 uppercase font-mono tracking-widest font-bold" }, user.role === "admin" ? "Administrador" : "Personal")
+              )
+            ),
+            React.createElement('button', { onClick: handleLogout, className: "w-full flex items-center justify-center gap-2 border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500/20 text-rose-450 hover:text-rose-400 py-2 rounded-xl text-xs font-bold transition duration-150 cursor-pointer" },
+              React.createElement(Icon, { name: "log-out", className: "w-3.5 h-3.5" }),
+              React.createElement('span', { className: "text-rose-350" }, "Desvincular")
+            )
+          )
+        ),
+
+        // Main App Viewport
+        React.createElement('main', { className: "flex-1 flex flex-col h-screen min-w-0 overflow-hidden" },
+          
+          // Header
+          React.createElement('header', { className: "bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between lg:justify-end shrink-0 z-10" },
+            React.createElement('button', { onClick: () => setMobileMenuOpen(true), className: "lg:hidden p-2 text-emerald-400 bg-slate-800 rounded-lg hover:bg-slate-750" },
+              React.createElement(Icon, { name: "menu" })
+            ),
+            React.createElement('div', { className: "flex items-center gap-4" },
+              React.createElement('div', { className: "p-2 bg-emerald-500/10 border border-emerald-500/20 px-4 py-1.5 rounded-full flex items-center gap-2" },
+                React.createElement('span', { className: "w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" }),
+                React.createElement('span', { className: "text-[10px] uppercase font-mono tracking-widest text-emerald-400 font-bold" }, "Sincronizado Con Firestore")
+              )
+            )
+          ),
+
+          // Central container
+          React.createElement('div', { className: "flex-1 overflow-y-auto p-6 lg:p-8" },
+            activeTab === "dashboard" && React.createElement(DashboardTab, { rawMaterialsCapital, finishedProductsSalesPotential, activeOrdersCount, fixedCostsTotal, productionOrders }),
+            activeTab === "inventory" && React.createElement(InventoryTab, { rawMaterials, finishedProducts }),
+            activeTab === "orders" && React.createElement(OrdersTab, { productionOrders, usersList }),
+            activeTab === "costs" && React.createElement(CostsTab, { fixedCosts }),
+            activeTab === "admin" && user.role === "admin" && React.createElement(AdminTab, { usersList, user }),
+            activeTab === "attendance" && React.createElement(AttendanceTab, { usersList })
+          )
+        )
+      );
+    }
+
+    function SidebarNavButton({ active, label, icon, onClick }) {
+      return React.createElement('button', {
+        onClick,
+        className: `w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition ${
+          active 
+            ? 'bg-emerald-500 text-white font-bold shadow-md shadow-emerald-500/10' 
+            : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
+        } cursor-pointer`
+      },
+        React.createElement(Icon, { name: icon, className: "w-5 h-5 shrink-0" }),
+        React.createElement('span', null, label)
+      );
+    }
+
+    function LoginView({ onLogin }) {
+      const [email, setEmail] = useState("");
+      const [password, setPassword] = useState("");
+      const [loadingAuth, setLoadingAuth] = useState(false);
+      const [errorMsg, setErrorMsg] = useState("");
+
+      const handleLogin = async (e) => {
+        e.preventDefault();
+        setLoadingAuth(true);
+        setErrorMsg("");
+        try {
+          const res = await signInWithEmailAndPassword(auth, email.trim(), password);
+          // profile gets loaded automatically via onAuthStateChanged
+        } catch (err) {
+          setErrorMsg("Credenciales inválidas. Revisa tu correo y contraseña.");
+        } finally {
+          setLoadingAuth(false);
+        }
+      };
+
+      const handleGoogle = async () => {
+        setLoadingAuth(true);
+        setErrorMsg("");
+        try {
+          const provider = new GoogleAuthProvider();
+          await signInWithPopup(auth, provider);
+        } catch (err) {
+          setErrorMsg("No se pudo iniciar con Google: " + err.message);
+        } finally {
+          setLoadingAuth(false);
+        }
+      };
+
+      return React.createElement('div', { className: "min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6" },
+        React.createElement('div', { className: "w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-xl" },
+          React.createElement('div', { className: "text-center mb-8" },
+            React.createElement('div', { className: "w-14 h-14 bg-emerald-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-emerald-500/20" },
+              React.createElement(Icon, { name: "scissors", className: "w-7 h-7 text-emerald-400 rotate-45" })
+            ),
+            React.createElement('h1', { className: "text-2xl font-bold font-display text-white" }, "Sisa Creaciones ERP"),
+            React.createElement('p', { className: "text-xs text-slate-400 mt-2" }, "Ingreso Autorizado de Taller y Producción Textil")
+          ),
+
+          React.createElement('form', { onSubmit: handleLogin, className: "space-y-4" },
+            React.createElement('div', null,
+              React.createElement('label', { className: "block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1.5" }, "Correo Electrónico"),
+              React.createElement('input', { type: "email", required: true, value: email, onChange: e => setEmail(e.target.value), className: "w-full bg-slate-950 border border-slate-800 hover:border-slate-700 focus:border-emerald-500 rounded-xl px-4 py-3 text-sm text-white focus:outline-none transition" })
+            ),
+            React.createElement('div', null,
+              React.createElement('label', { className: "block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1.5" }, "Contraseña"),
+              React.createElement('input', { type: "password", required: true, value: password, onChange: e => setPassword(e.target.value), className: "w-full bg-slate-950 border border-slate-800 hover:border-slate-700 focus:border-emerald-500 rounded-xl px-4 py-3 text-sm text-white focus:outline-none transition" })
+            ),
+            errorMsg && React.createElement('p', { className: "text-xs text-rose-450 bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-2.5" }, errorMsg),
+            React.createElement('button', { type: "submit", disabled: loadingAuth, className: "w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-slate-950 py-3 rounded-xl text-sm font-bold shadow-lg shadow-emerald-500/10 transition duration-150 flex items-center justify-center gap-2 cursor-pointer" },
+              loadingAuth ? 'Validando...' : 'Iniciar Sesión'
+            )
+          ),
+
+          React.createElement('div', { className: "relative my-6" },
+            React.createElement('div', { className: "absolute inset-0 flex items-center" },
+              React.createElement('div', { className: "w-full border-t border-slate-800" })
+            ),
+            React.createElement('div', { className: "relative flex justify-center text-xs uppercase" },
+              React.createElement('span', { className: "bg-slate-900 px-3 text-slate-500 font-semibold font-mono" }, "O accede mediante")
+            )
+          ),
+
+          React.createElement('button', { onClick: handleGoogle, disabled: loadingAuth, className: "w-full bg-slate-950 border border-slate-800 hover:border-slate-700 text-white py-3 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-3 cursor-pointer" },
+            React.createElement('svg', { className: "w-4 h-4", viewBox: "0 0 24 24" },
+              React.createElement('path', { fill: "currentColor", d: "M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" }),
+              React.createElement('path', { fill: "currentColor", d: "M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" }),
+              React.createElement('path', { fill: "currentColor", d: "M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" }),
+              React.createElement('path', { fill: "currentColor", d: "M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" })
+            ),
+            React.createElement('span', null, "Continuar con Google")
+          )
+        )
+      );
+    }
+
+    function DashboardTab({ rawMaterialsCapital, finishedProductsSalesPotential, activeOrdersCount, fixedCostsTotal, productionOrders }) {
+      return React.createElement('div', { className: "space-y-6" },
+        React.createElement('div', null,
+          React.createElement('h1', { className: "text-3xl font-extrabold font-display text-white tracking-tight" }, "Tablero Principal"),
+          React.createElement('p', { className: "text-sm text-slate-400 mt-1" }, "Consola de balance contable de Sisa Creaciones")
+        ),
+
+        React.createElement('div', { className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" },
+          React.createElement(MetricCard, { title: "Capital Materia Prima", value: `$${rawMaterialsCapital.toFixed(2)}`, icon: "box", color: "text-emerald-400" }),
+          React.createElement(MetricCard, { title: "Ventas Potenciales Productos", value: `$${finishedProductsSalesPotential.toFixed(2)}`, icon: "dollar-sign", color: "text-blue-400" }),
+          React.createElement(MetricCard, { title: "Órdenes Activas Taller", value: activeOrdersCount.toString(), icon: "clipboard-list", color: "text-amber-400" }),
+          React.createElement(MetricCard, { title: "Gastos Fijos Mensuales", value: `$${fixedCostsTotal.toFixed(2)}`, icon: "activity", color: "text-rose-400" })
+        ),
+
+        // Active Queue table
+        React.createElement('div', { className: "bg-slate-900 border border-slate-800 rounded-2xl p-6" },
+          React.createElement('h2', { className: "text-lg font-bold font-display text-white mb-4" }, "Últimas Órdenes de Confección"),
+          React.createElement('div', { className: "overflow-x-auto" },
+            React.createElement('table', { className: "w-full text-left font-sans text-sm text-slate-300" },
+              React.createElement('thead', { className: "text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-800" },
+                React.createElement('tr', null,
+                  React.createElement('th', { className: "pb-3" }, "Prenda"),
+                  React.createElement('th', { className: "pb-3" }, "Cliente"),
+                  React.createElement('th', { className: "pb-3" }, "Cantidad"),
+                  React.createElement('th', { className: "pb-3" }, "Estado"),
+                  React.createElement('th', { className: "pb-3" }, "Fecha Límite")
+                )
+              ),
+              React.createElement('tbody', { className: "divide-y divide-slate-800" },
+                productionOrders.slice(0, 5).map((o, idx) => React.createElement('tr', { key: idx, className: "hover:bg-slate-850" },
+                  React.createElement('td', { className: "py-3 h-12 font-bold text-white flex items-center gap-2" }, 
+                    React.createElement(Icon, { name: "scissors", className: "w-4 h-4 text-emerald-400 rotate-45" }),
+                    o.garmentType
+                  ),
+                  React.createElement('td', { className: "py-3" }, o.clientName || "Directo"),
+                  React.createElement('td', { className: "py-3" }, o.quantity || 1),
+                  React.createElement('td', { className: "py-3" }, 
+                    React.createElement('span', { className: `px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${o.status === "Listo" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-amber-500/10 text-amber-400 border border-amber-500/20"}` }, o.status)
+                  ),
+                  React.createElement('td', { className: "py-3 font-mono text-xs" }, o.limitDate || "--/--/--")
+                ))
+              )
+            )
+          )
+        )
+      );
+    }
+
+    function MetricCard({ title, value, icon, color }) {
+      return React.createElement('div', { className: "bg-slate-900 border border-slate-800 rounded-2xl p-6 flex items-center justify-between shadow-lg" },
+        React.createElement('div', null,
+          React.createElement('p', { className: "text-xs font-semibold text-slate-400 uppercase tracking-widest" }, title),
+          React.createElement('p', { className: "text-2xl font-black font-display text-white mt-1.5" }, value)
+        ),
+        React.createElement('div', { className: `p-3 bg-slate-950 border border-slate-850 rounded-xl ${color}` },
+          React.createElement(Icon, { name: icon, className: "w-6 h-6" })
+        )
+      );
+    }
+
+    function InventoryTab({ rawMaterials, finishedProducts }) {
+      const [matName, setMatName] = useState("");
+      const [matQty, setMatQty] = useState(0);
+      const [matUnit, setMatUnit] = useState("metros");
+      const [matCost, setMatCost] = useState(0);
+      const [matCategory, setMatCategory] = useState("Tela");
+
+      const handleAddMaterial = async (e) => {
+        e.preventDefault();
+        try {
+          const id = `mat_${Date.now()}`;
+          await setDoc(doc(db, "raw_materials", id), {
+            id,
+            name: matName.trim(),
+            quantity: Number(matQty),
+            unit: matUnit,
+            costPerUnit: Number(matCost),
+            category: matCategory,
+            updatedAt: new Date().toISOString()
+          });
+          setMatName("");
+          setMatQty(0);
+          setMatCost(0);
+        } catch (err) {
+          alert("Error al guardar material: " + err.message);
+        }
+      };
+
+      const handleDeleteMaterial = async (id) => {
+        if (confirm("¿Desear eliminar este material?")) {
+          await deleteDoc(doc(db, "raw_materials", id));
+        }
+      };
+
+      return React.createElement('div', { className: "space-y-8" },
+        React.createElement('div', null,
+          React.createElement('h1', { className: "text-3xl font-extrabold font-display text-white tracking-tight" }, "Inventario General"),
+          React.createElement('p', { className: "text-sm text-slate-400 mt-1" }, "Monitoreo en tiempo real de materias primas y telas.")
+        ),
+
+        React.createElement('div', { className: "grid grid-cols-1 lg:grid-cols-3 gap-8" },
+          
+          // Form adding materia prima
+          React.createElement('div', { className: "bg-slate-900 border border-slate-800 rounded-2xl p-6 self-start" },
+            React.createElement('h2', { className: "text-lg font-bold font-display text-white mb-4" }, "Nueva Materia Prima"),
+            React.createElement('form', { onSubmit: handleAddMaterial, className: "space-y-4" },
+              React.createElement('div', null,
+                React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Nombre del Material"),
+                React.createElement('input', { type: "text", required: true, value: matName, onChange: e => setMatName(e.target.value), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500" })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Categoría"),
+                React.createElement('select', { value: matCategory, onChange: e => setMatCategory(e.target.value), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" },
+                  React.createElement('option', { value: "Tela" }, "Tela / Textil"),
+                  React.createElement('option', { value: "Hilo" }, "Hilo"),
+                  React.createElement('option', { value: "Accesorios" }, "Accesorios (Botones/Cierres)")
+                )
+              ),
+              React.createElement('div', { className: "grid grid-cols-2 gap-4" },
+                React.createElement('div', null,
+                  React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Cantidad"),
+                  React.createElement('input', { type: "number", step: "0.01", required: true, value: matQty, onChange: e => setMatQty(Number(e.target.value)), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" })
+                ),
+                React.createElement('div', null,
+                  React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Unidad"),
+                  React.createElement('input', { type: "text", required: true, value: matUnit, onChange: e => setMatUnit(e.target.value), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" })
+                )
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Costo Unitario ($)"),
+                React.createElement('input', { type: "number", step: "0.01", required: true, value: matCost, onChange: e => setMatCost(Number(e.target.value)), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" })
+              ),
+              React.createElement('button', { type: "submit", className: "w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 py-3 rounded-xl text-sm font-bold shadow-lg transition duration-150 cursor-pointer" }, "Registrar Insumo")
+            )
+          ),
+
+          // Materials Inventory active View
+          React.createElement('div', { className: "lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6" },
+            React.createElement('h2', { className: "text-lg font-bold font-display text-white mb-4" }, "Insumos y Telas en Bodega"),
+            React.createElement('div', { className: "overflow-x-auto" },
+              React.createElement('table', { className: "w-full text-left font-sans text-sm text-slate-350" },
+                React.createElement('thead', { className: "text-xs font-semibold text-slate-400 uppercase border-b border-slate-800" },
+                  React.createElement('tr', null,
+                    React.createElement('th', { className: "pb-3" }, "Material"),
+                    React.createElement('th', { className: "pb-3" }, "Categoría"),
+                    React.createElement('th', { className: "pb-3" }, "Carga"),
+                    React.createElement('th', { className: "pb-3" }, "Coste Unitario"),
+                    React.createElement('th', { className: "pb-3 text-right" }, "Manejador")
+                  )
+                ),
+                React.createElement('tbody', { className: "divide-y divide-slate-800" },
+                  rawMaterials.map((m, idx) => React.createElement('tr', { key: idx, className: "hover:bg-slate-850" },
+                    React.createElement('td', { className: "py-3 font-bold text-white" }, m.name),
+                    React.createElement('td', { className: "py-3 text-xs" }, m.category),
+                    React.createElement('td', { className: "py-3 font-mono" }, `${m.quantity} ${m.unit}`),
+                    React.createElement('td', { className: "py-3 font-mono text-emerald-400" }, `$${m.costPerUnit || 0}`),
+                    React.createElement('td', { className: "py-3 text-right" },
+                      React.createElement('button', { onClick: () => handleDeleteMaterial(m.id), className: "p-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-450 hover:text-rose-400 rounded-lg transition" },
+                        React.createElement(Icon, { name: "trash-2", className: "w-4 h-4 text-rose-400" })
+                      )
+                    )
+                  ))
+                )
+              )
+            )
+          )
+        )
+      );
+    }
+
+    function OrdersTab({ productionOrders, usersList }) {
+      const [opName, setOpName] = useState("");
+      const [quantity, setQuantity] = useState(1);
+      const [gType, setGType] = useState("Blusa");
+      const [limitDate, setLimitDate] = useState("");
+      const [opId, setOpId] = useState("");
+      const [garmentValue, setGarmentValue] = useState(0);
+      const [garmentAdvance, setGarmentAdvance] = useState(0);
+
+      const [cName, setCName] = useState("");
+      const [cPhone, setCPhone] = useState("");
+
+      const handleAddOrder = async (e) => {
+        e.preventDefault();
+        try {
+          const id = `ord_${Date.now()}`;
+          const balance = Math.max(0, Number(garmentValue) - Number(garmentAdvance));
+          const op = usersList.find(u => u.uid === opId);
+          await setDoc(doc(db, "production_orders", id), {
+            id,
+            orderNumber: `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
+            garmentType: gType,
+            quantity: Number(quantity),
+            limitDate,
+            assignedOperatorId: opId,
+            assignedOperatorName: op ? op.name : "Sin asignar",
+            clientName: cName.trim(),
+            clientPhone: cPhone.trim(),
+            valorPrenda: Number(garmentValue),
+            anticipo: Number(garmentAdvance),
+            saldo: balance,
+            status: "Registrado",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          });
+          setQuantity(1);
+          setCName("");
+          setCPhone("");
+          setGarmentValue(0);
+          setGarmentAdvance(0);
+        } catch (err) {
+          alert("Error al cargar pedido: " + err.message);
+        }
+      };
+
+      const handleUpdateStatus = async (id, nextStatus) => {
+        try {
+          await updateDoc(doc(db, "production_orders", id), {
+            status: nextStatus,
+            updatedAt: new Date().toISOString()
+          });
+        } catch (err) {
+          alert("Error de guardado: " + err.message);
+        }
+      };
+
+      return React.createElement('div', { className: "space-y-8" },
+        React.createElement('div', null,
+          React.createElement('h1', { className: "text-3xl font-extrabold font-display text-white tracking-tight" }, "Órdenes de Producción"),
+          React.createElement('p', { className: "text-sm text-slate-400 mt-1" }, "Ingreso de costura con medidas de confección y hoja de ruta.")
+        ),
+
+        React.createElement('div', { className: "grid grid-cols-1 lg:grid-cols-3 gap-8" },
+          
+          React.createElement('div', { className: "bg-slate-900 border border-slate-800 rounded-2xl p-6 self-start animate-fade-in" },
+            React.createElement('h2', { className: "text-lg font-bold font-display text-white mb-4" }, "Nueva Ficha de Confección"),
+            React.createElement('form', { onSubmit: handleAddOrder, className: "space-y-4" },
+              React.createElement('div', null,
+                React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Nombre del Cliente"),
+                React.createElement('input', { type: "text", required: true, value: cName, onChange: e => setCName(e.target.value), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Teléfono del Cliente"),
+                React.createElement('input', { type: "text", required: true, value: cPhone, onChange: e => setCPhone(e.target.value), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" })
+              ),
+              React.createElement('div', { className: "grid grid-cols-2 gap-4" },
+                React.createElement('div', null,
+                  React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Prenda"),
+                  React.createElement('select', { value: gType, onChange: e => setGType(e.target.value), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" },
+                    React.createElement('option', { value: "Blusa" }, "Blusa"),
+                    React.createElement('option', { value: "Pollera" }, "Pollera"),
+                    React.createElement('option', { value: "Faja" }, "Faja")
+                  )
+                ),
+                React.createElement('div', null,
+                  React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Cantidad"),
+                  React.createElement('input', { type: "number", required: true, value: quantity, onChange: e => setQuantity(Number(e.target.value)), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" })
+                )
+              ),
+              React.createElement('div', { className: "grid grid-cols-2 gap-4" },
+                React.createElement('div', null,
+                  React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Valor Total ($)"),
+                  React.createElement('input', { type: "number", value: garmentValue, onChange: e => setGarmentValue(Number(e.target.value)), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" })
+                ),
+                React.createElement('div', null,
+                  React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Abono / Anticipo"),
+                  React.createElement('input', { type: "number", value: garmentAdvance, onChange: e => setGarmentAdvance(Number(e.target.value)), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" })
+                )
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Asignar Operario"),
+                React.createElement('select', { value: opId, onChange: e => setOpId(e.target.value), required: true, className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" },
+                  React.createElement('option', { value: "" }, "Selecciona un operario..."),
+                  usersList.filter(u => u.role !== "admin").map((u, idx) => React.createElement('option', { key: idx, value: u.uid }, u.name))
+                )
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Fecha Límite de Entrega"),
+                React.createElement('input', { type: "date", required: true, value: limitDate, onChange: e => setLimitDate(e.target.value), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none" })
+              ),
+              React.createElement('button', { type: "submit", className: "w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 py-3 rounded-xl text-sm font-bold shadow-lg transition duration-150 cursor-pointer" }, "Generar Órden")
+            )
+          ),
+
+          // Active Grid List of Confección Orders
+          React.createElement('div', { className: "lg:col-span-2 space-y-4" },
+            productionOrders.map((o, idx) => React.createElement('div', { key: idx, className: "bg-slate-900 border border-slate-800 rounded-2xl p-6 relative flex flex-col md:flex-row md:items-center justify-between gap-6" },
+              React.createElement('div', { className: "space-y-1.5" },
+                React.createElement('div', { className: "flex items-center gap-2" },
+                  React.createElement('span', { className: "text-xs font-mono font-bold bg-slate-800 text-emerald-400 px-2 py-0.5 rounded-lg border border-slate-700" }, o.orderNumber),
+                  React.createElement('span', { className: "text-sm text-slate-400" }, `Prenda: ${o.garmentType}`)
+                ),
+                React.createElement('p', { className: "text-lg font-bold text-white font-display" }, o.clientName || "Pedido de Taller"),
+                React.createElement('p', { className: "text-xs text-slate-400 font-mono" }, `Asignado a: ${o.assignedOperatorName || "Sin asignar"}`),
+                React.createElement('p', { className: "text-xs text-emerald-400/80 font-mono" }, `Valor: $${o.valorPrenda || 0} / Anticipo: $${o.anticipo || 0} / Saldo Pendiente: $${o.saldo || 0}`)
+              ),
+
+              React.createElement('div', { className: "flex flex-col gap-2 items-end shrink-0" },
+                React.createElement('div', { className: "text-xs text-slate-400 text-right uppercase tracking-wider font-semibold" }, `Estado: ${o.status}`),
+                React.createElement('div', { className: "flex gap-2" },
+                  o.status === "Registrado" && React.createElement('button', { onClick: () => handleUpdateStatus(o.id, "En Proceso"), className: "bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 text-xs font-bold rounded-lg transition" }, "Costura"),
+                  o.status === "En Proceso" && React.createElement('button', { onClick: () => handleUpdateStatus(o.id, "Listo"), className: "bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 text-xs font-bold rounded-lg transition" }, "Marcar Listo")
+                )
+              )
+            ))
+          )
+        )
+      );
+    }
+
+    function CostsTab({ fixedCosts }) {
+      const [cDesc, setCDesc] = useState("");
+      const [cAmt, setCAmt] = useState(0);
+
+      const handleAddCost = async (e) => {
+        e.preventDefault();
+        try {
+          const id = `cost_${Date.now()}`;
+          await setDoc(doc(db, "fixed_costs", id), {
+            id,
+            description: cDesc.trim(),
+            amount: Number(cAmt),
+            createdAt: new Date().toISOString()
+          });
+          setCDesc("");
+          setCAmt(0);
+        } catch (err) {
+          alert("Error: " + err.message);
+        }
+      };
+
+      const handleRemove = async (id) => {
+        if (confirm("¿Eliminar este gasto fije?")) {
+          await deleteDoc(doc(db, "fixed_costs", id));
+        }
+      };
+
+      return React.createElement('div', { className: "space-y-8" },
+        React.createElement('div', null,
+          React.createElement('h1', { className: "text-3xl font-extrabold font-display text-white tracking-tight" }, "Gastos Fijos"),
+          React.createElement('p', { className: "text-sm text-slate-400 mt-1" }, "Control mensual de arriendo, luz, agua y nóminas del taller.")
+        ),
+
+        React.createElement('div', { className: "grid grid-cols-1 lg:grid-cols-3 gap-8" },
+          React.createElement('div', { className: "bg-slate-900 border border-slate-800 rounded-2xl p-6 self-start" },
+            React.createElement('h2', { className: "text-lg font-bold font-display text-white mb-4" }, "Registrar Servicio / Egreso"),
+            React.createElement('form', { onSubmit: handleAddCost, className: "space-y-4" },
+              React.createElement('div', null,
+                React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Descripción"),
+                React.createElement('input', { type: "text", required: true, value: cDesc, onChange: e => setCDesc(e.target.value), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Monto Mensual ($)"),
+                React.createElement('input', { type: "number", step: "0.01", required: true, value: cAmt, onChange: e => setCAmt(Number(e.target.value)), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" })
+              ),
+              React.createElement('button', { type: "submit", className: "w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 py-3 rounded-xl text-sm font-bold shadow-lg transition duration-150 cursor-pointer" }, "Registrar Gasto")
+            )
+          ),
+
+          React.createElement('div', { className: "lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6" },
+            React.createElement('h2', { className: "text-lg font-bold font-display text-white mb-4" }, "Libro contable de Costos Fijos"),
+            React.createElement('div', { className: "overflow-x-auto" },
+              React.createElement('table', { className: "w-full text-left font-sans text-sm text-slate-350" },
+                React.createElement('thead', { className: "text-xs font-semibold text-slate-400 border-b border-slate-800 uppercase" },
+                  React.createElement('tr', null,
+                    React.createElement('th', { className: "pb-3" }, "Servicio / Concepto"),
+                    React.createElement('th', { className: "pb-3" }, "Monto"),
+                    React.createElement('th', { className: "pb-3 text-right" }, "Acciones")
+                  )
+                ),
+                React.createElement('tbody', { className: "divide-y divide-slate-800" },
+                  fixedCosts.map((c, idx) => React.createElement('tr', { key: idx, className: "hover:bg-slate-850" },
+                    React.createElement('td', { className: "py-3 font-bold text-white" }, c.description),
+                    React.createElement('td', { className: "py-3 font-mono text-rose-400" }, `$${c.amount}`),
+                    React.createElement('td', { className: "py-3 text-right" },
+                      React.createElement('button', { onClick: () => handleRemove(c.id), className: "p-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-450 hover:text-rose-400 rounded-lg transition" },
+                        React.createElement(Icon, { name: "trash-2", className: "w-4 h-4 text-rose-400" })
+                      )
+                    )
+                  ))
+                )
+              )
+            )
+          )
+        )
+      );
+    }
+
+    function AdminTab({ usersList, user }) {
+      const [name, setName] = useState("");
+      const [email, setEmail] = useState("");
+      const [phone, setPhone] = useState("");
+      const [cedula, setCedula] = useState("");
+      const [role, setRole] = useState("operator");
+
+      const handleAddOperator = async (e) => {
+        e.preventDefault();
+        try {
+          const uid = `user_${Date.now()}`;
+          await setDoc(doc(db, "users", uid), {
+            uid,
+            name: name.trim(),
+            email: email.trim(),
+            phone: phone.trim(),
+            cedula: cedula.trim(),
+            role,
+            status: "Activo",
+            createdAt: new Date().toISOString()
+          });
+          setName("");
+          setEmail("");
+          setPhone("");
+          setCedula("");
+        } catch (err) {
+          alert("Error: " + err.message);
+        }
+      };
+
+      const handleRemoveOperator = async (targetId) => {
+        if (targetId === user.uid) return alert("Sisa: No puedes eliminar tu propio usuario.");
+        if (confirm("¿Desea forzar la baja de este personal textil?")) {
+          await updateDoc(doc(db, "users", targetId), { status: "Eliminado" });
+        }
+      };
+
+      return React.createElement('div', { className: "space-y-8 animate-fade-in" },
+        React.createElement('div', null,
+          React.createElement('h1', { className: "text-3xl font-extrabold font-display text-white tracking-tight" }, "Personal de Confección"),
+          React.createElement('p', { className: "text-sm text-slate-400 mt-1" }, "Sincronización instantánea de operarios, sastres y costureras.")
+        ),
+
+        React.createElement('div', { className: "grid grid-cols-1 lg:grid-cols-3 gap-8" },
+          
+          React.createElement('div', { className: "bg-slate-900 border border-slate-800 rounded-2xl p-6 self-start" },
+            React.createElement('h2', { className: "text-lg font-bold font-display text-white mb-4" }, "Registrar Nuevo Operario"),
+            React.createElement('form', { onSubmit: handleAddOperator, className: "space-y-4" },
+              React.createElement('div', null,
+                React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Nombre Completo"),
+                React.createElement('input', { type: "text", required: true, value: name, onChange: e => setName(e.target.value), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Correo de Acceso"),
+                React.createElement('input', { type: "email", required: true, value: email, onChange: e => setEmail(e.target.value), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Cédula / Identidad"),
+                React.createElement('input', { type: "text", required: true, value: cedula, onChange: e => setCedula(e.target.value), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Teléfono Celular"),
+                React.createElement('input', { type: "text", required: true, value: phone, onChange: e => setPhone(e.target.value), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" })
+              ),
+              React.createElement('div', null,
+                React.createElement('label', { className: "block text-xs font-semibold text-slate-400 mb-1" }, "Cargo"),
+                React.createElement('select', { value: role, onChange: e => setRole(e.target.value), className: "w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none" },
+                  React.createElement('option', { value: "operator" }, "Operario / Confeccionador"),
+                  React.createElement('option', { value: "admin" }, "Administrador de Consola")
+                )
+              ),
+              React.createElement('button', { type: "submit", className: "w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 py-3 rounded-xl text-sm font-bold shadow-lg transition duration-150 cursor-pointer" }, "Guardar Perfil")
+            )
+          ),
+
+          React.createElement('div', { className: "lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-6" },
+            React.createElement('h2', { className: "text-lg font-bold font-display text-white mb-4" }, "Lista de Personal Registrado"),
+            React.createElement('div', { className: "overflow-x-auto" },
+              React.createElement('table', { className: "w-full text-left font-sans text-sm text-slate-350" },
+                React.createElement('thead', { className: "text-xs font-semibold text-slate-400 uppercase border-b border-slate-800" },
+                  React.createElement('tr', null,
+                    React.createElement('th', { className: "pb-3" }, "Empleado"),
+                    React.createElement('th', { className: "pb-3" }, "Identidad"),
+                    React.createElement('th', { className: "pb-3" }, "Celular"),
+                    React.createElement('th', { className: "pb-3" }, "Rol"),
+                    React.createElement('th', { className: "pb-3 text-right" }, "Administrar")
+                  )
+                ),
+                React.createElement('tbody', { className: "divide-y divide-slate-800" },
+                  usersList.map((u, idx) => React.createElement('tr', { key: idx, className: "hover:bg-slate-850" },
+                    React.createElement('td', { className: "py-3" },
+                      React.createElement('p', { className: "font-bold text-white" }, u.name),
+                      React.createElement('span', { className: "text-[10px] text-slate-500 font-mono mt-0.5 inline-block" }, u.email)
+                    ),
+                    React.createElement('td', { className: "py-3 font-mono" }, u.cedula || "--"),
+                    React.createElement('td', { className: "py-3 font-mono" }, u.phone || "--"),
+                    React.createElement('td', { className: "py-3" },
+                      React.createElement('span', { className: `text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase ${u.role === "admin" ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}` }, u.role === "admin" ? "Admin" : "Costurera")
+                    ),
+                    React.createElement('td', { className: "py-3 text-right" },
+                      React.createElement('button', { onClick: () => handleRemoveOperator(u.uid), className: "p-1.5 bg-rose-500/15 text-rose-400 hover:bg-rose-500/25 rounded-lg transition" },
+                        React.createElement(Icon, { name: "user-minus", className: "w-4 h-4" })
+                      )
+                    )
+                  ))
+                )
+              )
+            )
+          )
+        )
+      );
+    }
+
+    function AttendanceTab({ usersList }) {
+      const [pinInput, setPinInput] = useState("");
+      const [errorPin, setErrorPin] = useState("");
+      const [successMsg, setSuccessMsg] = useState("");
+
+      const handlePress = (char) => {
+        if (pinInput.length < 10) {
+          setPinInput(p => p + char);
+        }
+      };
+
+      const handleClear = () => {
+        setPinInput("");
+        setErrorPin("");
+        setSuccessMsg("");
+      };
+
+      const handleConfirm = async () => {
+        setErrorPin("");
+        setSuccessMsg("");
+        try {
+          const operator = usersList.find(u => u.cedula === pinInput || u.phone === pinInput);
+          if (!operator) {
+            throw new Error("Sisa: No hay ningún operario registrado con esta Identidad/Teléfono como PIN.");
+          }
+
+          const logId = `log_${Date.now()}`;
+          await setDoc(doc(db, "attendance_logs", logId), {
+            id: logId,
+            operatorId: operator.uid,
+            operatorName: operator.name,
+            timestamp: new Date().toISOString(),
+            status: "Registrado",
+            createdAt: new Date().toISOString()
+          });
+
+          // Text to Speech
+          if ("speechSynthesis" in window) {
+            window.speechSynthesis.cancel();
+            const speech = new SpeechSynthesisUtterance(`Bienvenido, ${operator.name}. Tu asistencia para Sisa Creaciones ha sido registrada.`);
+            speech.lang = "es-ES";
+            window.speechSynthesis.speak(speech);
+          }
+
+          setSuccessMsg(`¡Hola, ${operator.name}! Registraste tu asistencia con éxito.`);
+          setPinInput("");
+        } catch (e) {
+          setErrorPin(e.message);
+        }
+      };
+
+      return React.createElement('div', { className: "max-w-md mx-auto space-y-6" },
+        React.createElement('div', { className: "text-center" },
+          React.createElement('h1', { className: "text-3xl font-extrabold font-display text-white tracking-tight" }, "Terminal Asistencias"),
+          React.createElement('p', { className: "text-xs text-slate-400 mt-1" }, "Ingresa tu número de Cédula o Celular con PIN para timbrar.")
+        ),
+
+        React.createElement('div', { className: "bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-6" },
+          
+          React.createElement('div', { className: "bg-slate-950 border border-slate-850 rounded-2xl p-4 text-center min-h-[72px] flex items-center justify-center relative overflow-hidden" },
+            pinInput 
+              ? React.createElement('span', { className: "text-2xl font-mono text-emerald-400 font-black tracking-widest animate-pulse" }, pinInput)
+              : React.createElement('span', { className: "text-sm text-slate-500 italic" }, "Digita tu ID numérico...")
+          ),
+
+          React.createElement('div', { className: "grid grid-cols-3 gap-3" },
+            ["1", "2", "3", "4", "5", "6", "7", "8", "9"].map(num => React.createElement('button', { key: num, onClick: () => handlePress(num), className: "bg-slate-850 hover:bg-slate-800 text-lg font-mono py-4 rounded-xl text-white font-bold transition active:bg-emerald-500 active:text-slate-950 cursor-pointer" }, num)),
+            React.createElement('button', { onClick: handleClear, className: "bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-sm font-bold py-4 rounded-xl transition cursor-pointer" }, "Borrar"),
+            React.createElement('button', { onClick: () => handlePress("0"), className: "bg-slate-850 hover:bg-slate-800 text-lg font-mono py-4 rounded-xl text-white font-bold transition active:bg-emerald-500 cursor-pointer" }, "0"),
+            React.createElement('button', { onClick: handleConfirm, className: "bg-emerald-500 hover:bg-emerald-650 text-slate-950 text-sm font-bold py-4 rounded-xl shadow-lg shadow-emerald-500/10 transition cursor-pointer font-black" }, "Enter")
+          ),
+
+          errorPin && React.createElement('p', { className: "text-xs text-rose-450 text-center font-semibold bg-rose-500/10 border border-rose-500/20 p-3 rounded-xl" }, errorPin),
+          successMsg && React.createElement('p', { className: "text-xs text-emerald-400 text-center font-bold bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-xl animate-fade-in" }, successMsg)
+        )
+      );
+    }
+
+    ReactDOM.render(React.createElement(App), document.getElementById('root'));
+  </script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+{
+  "name": "Sisa Creaciones",
+  "description": "Sistema ERP textil profesional para la gestión de talleres y fábricas de confección: control de materias primas, productos listos, órdenes de producción con hoja de ruta y cálculo del punto de equilibrio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

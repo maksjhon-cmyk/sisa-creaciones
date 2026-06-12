@@ -1,0 +1,267 @@
+{
+  "entities": {
+    "user": {
+      "title": "User",
+      "description": "User profile with role details",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "operator"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "name", "role", "createdAt"]
+    },
+    "raw_material": {
+      "title": "Raw Material",
+      "description": "Stock of raw materials used in textile production",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "quantity": { "type": "number" },
+        "unit": { "type": "string" },
+        "minStock": { "type": "number" },
+        "costPerUnit": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "category", "quantity", "unit", "minStock", "costPerUnit"]
+    },
+    "finished_product": {
+      "title": "Finished Product",
+      "description": "Finished textile items categorized by type, size and color",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "size": { "type": "string" },
+        "color": { "type": "string" },
+        "stock": { "type": "number" },
+        "salePrice": { "type": "number" },
+        "materialCostPerUnit": { "type": "number" },
+        "laborCostPerUnit": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "type", "size", "color", "stock", "salePrice", "materialCostPerUnit", "laborCostPerUnit"]
+    },
+    "production_order": {
+      "title": "Production Order",
+      "description": "Textile manufacturing production order sheet",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "garmentType": { "type": "string" },
+        "patternUrl": { "type": "string" },
+        "quantity": { "type": "number" },
+        "size": { "type": "string" },
+        "color": { "type": "string" },
+        "limitDate": { "type": "string" },
+        "assignedOperatorId": { "type": "string" },
+        "assignedOperatorName": { "type": "string" },
+        "status": { "type": "string", "enum": ["En Diseño", "Corte", "Confección/Costura", "Acabado/Planchado", "Control de Calidad", "Empaque", "Listo"] },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "orderNumber", "garmentType", "quantity", "size", "color", "limitDate", "status", "createdAt", "updatedAt"]
+    },
+    "fixed_cost": {
+      "title": "Fixed Cost",
+      "description": "Monthly or periodic fixed costs for calculation of break-even point",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "concept": { "type": "string" },
+        "amount": { "type": "number" },
+        "period": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "concept", "amount", "period"]
+    },
+    "client": {
+      "title": "Client",
+      "description": "Customer registered in Sisa Creaciones ERP for billing",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "idType": { "type": "string" },
+        "idNumber": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "idType", "idNumber"]
+    },
+    "invoice": {
+      "title": "Invoice",
+      "description": "Electronic invoices with SRI status in Ecuador",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "claveAcceso": { "type": "string" },
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "clientIdNumber": { "type": "string" },
+        "clientEmail": { "type": "string" },
+        "subtotalIVA": { "type": "number" },
+        "subtotal0": { "type": "number" },
+        "discount": { "type": "number" },
+        "ivaRate": { "type": "number" },
+        "ivaAmount": { "type": "number" },
+        "total": { "type": "number" },
+        "status": { "type": "string" },
+        "ambiente": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "invoiceNumber", "claveAcceso", "clientId", "clientName", "clientIdNumber", "total", "status", "ambiente", "createdAt"]
+    },
+    "supplier": {
+      "title": "Supplier",
+      "description": "Materials and textile inputs supplier profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "ruc": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "ruc"]
+    },
+    "purchase": {
+      "title": "Purchase",
+      "description": "Material purchases journal tracking raw stock increments",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "supplierId": { "type": "string" },
+        "supplierName": { "type": "string" },
+        "materialId": { "type": "string" },
+        "materialName": { "type": "string" },
+        "quantity": { "type": "number" },
+        "unitPrice": { "type": "number" },
+        "subtotal": { "type": "number" },
+        "iva": { "type": "number" },
+        "total": { "type": "number" },
+        "paymentStatus": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "invoiceNumber", "supplierId", "supplierName", "materialId", "materialName", "quantity", "unitPrice", "total", "paymentStatus", "createdAt"]
+    },
+    "payroll_payment": {
+      "title": "Payroll Payment",
+      "description": "Fixed and productivity wages for operators",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "operatorId": { "type": "string" },
+        "operatorName": { "type": "string" },
+        "month": { "type": "string" },
+        "baseSalary": { "type": "number" },
+        "pieceworkEarnings": { "type": "number" },
+        "iessObligation": { "type": "number" },
+        "employeeIessDeduction": { "type": "number" },
+        "totalPaid": { "type": "number" },
+        "paymentStatus": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "operatorId", "operatorName", "month", "baseSalary", "pieceworkEarnings", "totalPaid", "paymentStatus", "createdAt"]
+    },
+    "journal_entry": {
+      "title": "Journal Entry",
+      "description": "ERP bookkeeping general ledger journal entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "concept": { "type": "string" },
+        "reference": { "type": "string" },
+        "lines": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "date", "concept", "reference", "lines", "createdAt"]
+    },
+    "attendance_log": {
+      "title": "Attendance Log",
+      "description": "Smart daily attendance clock-in clock-out session for operator time-card tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "operatorId": { "type": "string" },
+        "operatorName": { "type": "string" },
+        "date": { "type": "string" },
+        "checkIn": { "type": ["string", "null"] },
+        "checkOut": { "type": ["string", "null"] },
+        "hoursWorked": { "type": "number" },
+        "hoursExtra": { "type": "number" },
+        "status": { "type": "string", "enum": ["Puntual", "Atraso", "Falta Justificada", "Vacaciones", "Permiso Médico", "Falta"] },
+        "justified": { "type": "boolean" },
+        "justificationReason": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "operatorId", "operatorName", "date", "hoursWorked", "hoursExtra", "status", "justified", "justificationReason", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "user",
+      "description": "User profile with roles"
+    },
+    "raw_materials/{materialId}": {
+      "schema": "raw_material",
+      "description": "Raw materials inventory in the textile factory"
+    },
+    "finished_products/{productId}": {
+      "schema": "finished_product",
+      "description": "Inventory of garments/finished products"
+    },
+    "production_orders/{orderId}": {
+      "schema": "production_order",
+      "description": "Active production jobs assigned to operators"
+    },
+    "fixed_costs/{costId}": {
+      "schema": "fixed_cost",
+      "description": "Fixed operational costs parameter"
+    },
+    "clients/{clientId}": {
+      "schema": "client",
+      "description": "Customers for billing"
+    },
+    "invoices/{invoiceId}": {
+      "schema": "invoice",
+      "description": "Electronic invoices sent to SRI"
+    },
+    "suppliers/{supplierId}": {
+      "schema": "supplier",
+      "description": "Raw material suppliers"
+    },
+    "purchases/{purchaseId}": {
+      "schema": "purchase",
+      "description": "Purchases of raw materials / textile inputs"
+    },
+    "payroll_payments/{paymentId}": {
+      "schema": "payroll_payment",
+      "description": "Wages and social contributions of operators"
+    },
+    "journal_entries/{entryId}": {
+      "schema": "journal_entry",
+      "description": "Double entry bookeeping slips"
+    },
+    "attendance_logs/{logId}": {
+      "schema": "attendance_log",
+      "description": "Operators attendance cards logs with precise timings, GPS and delay states"
+    }
+  }
+}

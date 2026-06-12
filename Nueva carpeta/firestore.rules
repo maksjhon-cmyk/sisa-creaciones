@@ -1,0 +1,385 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Primitive Helpers & Global Security Gates
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn();
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == "maksjhon@gmail.com" || 
+        request.auth.uid == "Sisa-Creaciones-ERP"
+      );
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin"
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 2. Validation Blueprints (Strict Schemas)
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'name', 'role', 'createdAt'])
+        && data.keys().size() <= 12
+        && data.uid is string && data.uid.size() <= 128
+        && data.email is string && data.email.size() <= 256
+        && data.name is string && data.name.size() <= 128
+        && (data.role == "admin" || data.role == "operator")
+        && (!data.keys().hasAll(['rol']) || (data.rol is string && data.rol.size() <= 64))
+        && (!data.keys().hasAll(['cedula']) || (data.cedula is string && data.cedula.size() <= 32))
+        && (!data.keys().hasAll(['phone']) || (data.phone is string && data.phone.size() <= 32))
+        && (!data.keys().hasAll(['status']) || (data.status is string && data.status.size() <= 32))
+        && (!data.keys().hasAll(['detailRole']) || (data.detailRole is string && data.detailRole.size() <= 64));
+    }
+
+    function isValidRawMaterial(data) {
+      return data.keys().hasAll(['id', 'name', 'category', 'quantity', 'unit', 'minStock', 'costPerUnit', 'updatedAt'])
+        && data.keys().size() == 8
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 128
+        && data.category is string && data.category.size() <= 64
+        && data.quantity is number
+        && data.unit is string && data.unit.size() <= 32
+        && data.minStock is number
+        && data.costPerUnit is number;
+    }
+
+    function isValidFinishedProduct(data) {
+      return data.keys().hasAll(['id', 'name', 'type', 'size', 'color', 'stock', 'salePrice', 'materialCostPerUnit', 'laborCostPerUnit', 'updatedAt'])
+        && data.keys().size() == 10
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 128
+        && data.type is string && data.type.size() <= 64
+        && data.size is string && data.size.size() <= 16
+        && data.color is string && data.color.size() <= 32
+        && data.stock is number
+        && data.salePrice is number
+        && data.materialCostPerUnit is number
+        && data.laborCostPerUnit is number;
+    }
+
+    function isValidProductionOrder(data) {
+      return data.keys().hasAll(['id', 'orderNumber', 'status', 'quantity'])
+        && data.keys().size() <= 20
+        && data.id is string && data.id.size() <= 128
+        && data.orderNumber is string && data.orderNumber.size() <= 128
+        && data.status is string && data.status.size() <= 64
+        && data.quantity is number
+        && (!data.keys().hasAll(['garmentType']) || (data.garmentType is string && data.garmentType.size() <= 128))
+        && (!data.keys().hasAll(['patternUrl']) || (data.patternUrl is string && data.patternUrl.size() <= 1000000))
+        && (!data.keys().hasAll(['bocetoUrl']) || (data.bocetoUrl is string && data.bocetoUrl.size() <= 1000000))
+        && (!data.keys().hasAll(['size']) || (data.size is string && data.size.size() <= 64))
+        && (!data.keys().hasAll(['color']) || (data.color is string && data.color.size() <= 128))
+        && (!data.keys().hasAll(['limitDate']) || (data.limitDate is string && data.limitDate.size() <= 64))
+        && (!data.keys().hasAll(['assignedOperatorId']) || (data.assignedOperatorId is string && data.assignedOperatorId.size() <= 128))
+        && (!data.keys().hasAll(['assignedOperatorName']) || (data.assignedOperatorName is string && data.assignedOperatorName.size() <= 128))
+        && (!data.keys().hasAll(['notes']) || (data.notes is string && data.notes.size() <= 20000))
+        && (!data.keys().hasAll(['createdAt']) || (data.createdAt is string && data.createdAt.size() <= 64))
+        && (!data.keys().hasAll(['updatedAt']) || (data.updatedAt is string && data.updatedAt.size() <= 64))
+        && (!data.keys().hasAll(['stockDiscounted']) || data.stockDiscounted is bool)
+        && (!data.keys().hasAll(['medidasDetalles']) || data.medidasDetalles is map);
+    }
+
+    function isValidFixedCost(data) {
+      return data.keys().hasAll(['id', 'concept', 'amount', 'period', 'updatedAt'])
+        && data.keys().size() == 5
+        && data.id is string && data.id.size() <= 128
+        && data.concept is string && data.concept.size() <= 128
+        && data.amount is number
+        && data.period is string && data.period.size() <= 32;
+    }
+
+    function isValidClient(data) {
+      return data.keys().hasAll(['id', 'name', 'idType', 'idNumber', 'email', 'phone', 'address', 'updatedAt'])
+        && data.keys().size() == 8
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 128
+        && data.idType is string && data.idType.size() <= 32
+        && data.idNumber is string && data.idNumber.size() <= 20
+        && data.email is string && data.email.size() <= 256
+        && data.phone is string && data.phone.size() <= 32
+        && data.address is string && data.address.size() <= 256;
+    }
+
+    function isValidInvoice(data) {
+      return data.keys().hasAll(['id', 'invoiceNumber', 'claveAcceso', 'clientId', 'clientName', 'clientIdNumber', 'clientEmail', 'subtotalIVA', 'subtotal0', 'discount', 'ivaRate', 'ivaAmount', 'total', 'status', 'ambiente', 'createdAt', 'updatedAt'])
+        && data.keys().size() <= 18
+        && data.id is string && data.id.size() <= 128
+        && data.invoiceNumber is string && data.invoiceNumber.size() <= 32
+        && data.claveAcceso is string && data.claveAcceso.size() <= 64
+        && data.clientId is string && data.clientId.size() <= 128
+        && data.clientName is string && data.clientName.size() <= 128
+        && data.clientIdNumber is string && data.clientIdNumber.size() <= 20
+        && data.clientEmail is string && data.clientEmail.size() <= 256
+        && data.subtotalIVA is number
+        && data.subtotal0 is number
+        && data.discount is number
+        && data.ivaRate is number
+        && data.ivaAmount is number
+        && data.total is number
+        && (data.status == "AUTORIZADO" || data.status == "PENDIENTE" || data.status == "ERROR" || data.status == "RECIBO_INTERNO")
+        && (data.ambiente == "Pruebas" || data.ambiente == "Producción")
+        && (!data.keys().hasAll(['items']) || data.items is list);
+    }
+
+    function isValidSupplier(data) {
+      return data.keys().hasAll(['id', 'name', 'ruc', 'phone', 'email', 'address', 'updatedAt'])
+        && data.keys().size() == 7
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 128
+        && data.ruc is string && data.ruc.size() <= 32
+        && data.phone is string && data.phone.size() <= 32
+        && data.email is string && data.email.size() <= 256
+        && data.address is string && data.address.size() <= 256;
+    }
+
+    function isValidPurchase(data) {
+      return data.keys().hasAll(['id', 'invoiceNumber', 'supplierId', 'supplierName', 'materialId', 'materialName', 'quantity', 'unitPrice', 'subtotal', 'iva', 'total', 'paymentStatus', 'createdAt', 'updatedAt'])
+        && data.keys().size() == 14
+        && data.id is string && data.id.size() <= 128
+        && data.invoiceNumber is string && data.invoiceNumber.size() <= 64
+        && data.supplierId is string && data.supplierId.size() <= 128
+        && data.supplierName is string && data.supplierName.size() <= 128
+        && data.materialId is string && data.materialId.size() <= 128
+        && data.materialName is string && data.materialName.size() <= 128
+        && data.quantity is number
+        && data.unitPrice is number
+        && data.subtotal is number
+        && data.iva is number
+        && data.total is number
+        && (data.paymentStatus == "Pagado" || data.paymentStatus == "Pendiente");
+    }
+
+    function isValidPayrollPayment(data) {
+      return data.keys().hasAll(['id', 'operatorId', 'operatorName', 'month', 'baseSalary', 'pieceworkEarnings', 'iessObligation', 'employeeIessDeduction', 'totalPaid', 'paymentStatus', 'createdAt'])
+        && data.keys().size() <= 12
+        && data.id is string && data.id.size() <= 128
+        && data.operatorId is string && data.operatorId.size() <= 128
+        && data.operatorName is string && data.operatorName.size() <= 128
+        && data.month is string && data.month.size() <= 32
+        && data.baseSalary is number
+        && data.pieceworkEarnings is number
+        && data.iessObligation is number
+        && data.employeeIessDeduction is number
+        && data.totalPaid is number
+        && (data.paymentStatus == "Pagado" || data.paymentStatus == "Pendiente");
+    }
+
+    function isValidJournalEntry(data) {
+      return data.keys().hasAll(['id', 'date', 'concept', 'reference', 'lines', 'createdAt'])
+        && data.keys().size() == 6
+        && data.id is string && data.id.size() <= 128
+        && data.date is string && data.date.size() <= 64
+        && data.concept is string && data.concept.size() <= 256
+        && data.reference is string && data.reference.size() <= 128
+        && data.lines is list;
+    }
+
+    function isValidAccount(data) {
+      return data.keys().hasAll(['code', 'name', 'category'])
+        && data.code is string && data.code.size() <= 64
+        && data.name is string && data.name.size() <= 128
+        && (data.category == "Activo" || data.category == "Pasivo" || data.category == "Patrimonio" || data.category == "Ingresos" || data.category == "Costos" || data.category == "Gastos")
+        && (!data.keys().hasAll(['parentCode']) || (data.parentCode is string && data.parentCode.size() <= 64))
+        && (!data.keys().hasAll(['isGroup']) || data.isGroup is bool)
+        && (!data.keys().hasAll(['updatedAt']) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    function isValidAttendanceLog(data) {
+      return data.keys().hasAll(['id', 'operatorId', 'operatorName', 'date', 'hoursWorked', 'hoursExtra', 'status', 'justified', 'justificationReason', 'createdAt'])
+        && data.keys().size() <= 13
+        && data.id is string && data.id.size() <= 128
+        && data.operatorId is string && data.operatorId.size() <= 128
+        && data.operatorName is string && data.operatorName.size() <= 128
+        && data.date is string && data.date.size() <= 32
+        && (!data.keys().hasAll(['checkIn']) || (data.checkIn == null || (data.checkIn is string && data.checkIn.size() <= 64)))
+        && (!data.keys().hasAll(['checkOut']) || (data.checkOut == null || (data.checkOut is string && data.checkOut.size() <= 64)))
+        && data.hoursWorked is number
+        && data.hoursExtra is number
+        && (data.status == "Puntual" || data.status == "Atraso" || data.status == "Falta Justificada" || data.status == "Vacaciones" || data.status == "Permiso Médico" || data.status == "Falta")
+        && data.justified is bool
+        && data.justificationReason is string && data.justificationReason.size() <= 1000
+        && data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+
+    // ---------------------------------------------------------
+    // Collection matches
+    // ---------------------------------------------------------
+
+    // USERS COLLECTION
+    match /users/{userId} {
+      allow read, write, delete: if isSignedIn();
+    }
+
+    // EMPLEADOS COLLECTION
+    match /empleados/{empleadoId} {
+      allow read, write, delete: if true;
+    }
+
+    // PERSONAL COLLECTION
+    match /personal/{personalId} {
+      allow read, write, delete: if true;
+    }
+
+    // RAW MATERIALS COLLECTION
+    match /raw_materials/{materialId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isVerifiedUser() && (isAdmin() || isSignedIn()) && isValidRawMaterial(incoming()) && isValidId(materialId);
+      allow update: if isVerifiedUser() && isValidRawMaterial(incoming()) && isValidId(materialId) && (isAdmin() || isSignedIn());
+      allow delete: if isVerifiedUser() && isAdmin() && isValidId(materialId);
+    }
+
+    // FINISHED PRODUCTS COLLECTION
+    match /finished_products/{productId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isVerifiedUser() && isAdmin() && isValidFinishedProduct(incoming()) && isValidId(productId) && (incoming().updatedAt is string && incoming().updatedAt.size() <= 64);
+      allow update: if isVerifiedUser() && isValidFinishedProduct(incoming()) && isValidId(productId) && (
+        isAdmin() || (
+          incoming().name == existing().name
+          && incoming().type == existing().type
+          && incoming().size == existing().size
+          && incoming().color == existing().color
+          && incoming().salePrice == existing().salePrice
+          && incoming().materialCostPerUnit == existing().materialCostPerUnit
+          && incoming().laborCostPerUnit == existing().laborCostPerUnit
+          && incoming().diff(existing()).affectedKeys().hasOnly(['stock', 'updatedAt'])
+        )
+      );
+      allow delete: if isVerifiedUser() && isAdmin() && isValidId(productId);
+    }
+
+    // PRODUCTION ORDERS COLLECTION
+    match /production_orders/{orderId} {
+      allow get: if isSignedIn() && (isAdmin() || existing().assignedOperatorId == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.assignedOperatorId == request.auth.uid);
+      allow create: if isVerifiedUser() && isAdmin() && isValidProductionOrder(incoming()) && isValidId(orderId) && (incoming().createdAt is string && incoming().createdAt.size() <= 64);
+      allow update: if isVerifiedUser() && isValidProductionOrder(incoming()) && isValidId(orderId) && (
+        isAdmin() || (
+          existing().assignedOperatorId == request.auth.uid
+          && incoming().id == existing().id
+          && incoming().orderNumber == existing().orderNumber
+          && incoming().garmentType == existing().garmentType
+          && incoming().patternUrl == existing().patternUrl
+          && incoming().quantity == existing().quantity
+          && incoming().size == existing().size
+          && incoming().color == existing().color
+          && incoming().limitDate == existing().limitDate
+          && incoming().assignedOperatorId == existing().assignedOperatorId
+          && incoming().assignedOperatorName == existing().assignedOperatorName
+          && incoming().notes == existing().notes
+          && incoming().createdAt == existing().createdAt
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+        )
+      );
+      allow delete: if isVerifiedUser() && isAdmin() && isValidId(orderId);
+    }
+
+    // FIXED COSTS COLLECTION
+    match /fixed_costs/{costId} {
+      allow get: if isSignedIn() && isAdmin();
+      allow list: if isSignedIn() && isAdmin();
+      allow create: if isVerifiedUser() && isAdmin() && isValidFixedCost(incoming()) && isValidId(costId) && (incoming().updatedAt is string && incoming().updatedAt.size() <= 64);
+      allow update: if isVerifiedUser() && isValidFixedCost(incoming()) && isValidId(costId) && isAdmin() && (incoming().updatedAt is string && incoming().updatedAt.size() <= 64);
+      allow delete: if isVerifiedUser() && isAdmin() && isValidId(costId);
+    }
+
+    // CLIENTS COLLECTION
+    match /clients/{clientId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isVerifiedUser() && isValidClient(incoming()) && isValidId(clientId) && (incoming().updatedAt is string && incoming().updatedAt.size() <= 64);
+      allow update: if isVerifiedUser() && isValidClient(incoming()) && isValidId(clientId) && (incoming().updatedAt is string && incoming().updatedAt.size() <= 64);
+      allow delete: if isVerifiedUser() && isAdmin() && isValidId(clientId);
+    }
+
+    // INVOICES COLLECTION
+    match /invoices/{invoiceId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isVerifiedUser() && isValidInvoice(incoming()) && isValidId(invoiceId) && (incoming().createdAt is string && incoming().createdAt.size() <= 64);
+      allow update: if isVerifiedUser() && (isAdmin() || isSignedIn()) && isValidInvoice(incoming()) && isValidId(invoiceId);
+      allow delete: if isVerifiedUser() && isAdmin() && isValidId(invoiceId);
+    }
+
+    // NEW MODULE COLLECTIONS: SUPPLIERS
+    match /suppliers/{supplierId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isVerifiedUser() && isAdmin() && isValidSupplier(incoming()) && isValidId(supplierId);
+      allow update: if isVerifiedUser() && isAdmin() && isValidSupplier(incoming()) && isValidId(supplierId);
+      allow delete: if isVerifiedUser() && isAdmin() && isValidId(supplierId);
+    }
+
+    // NEW MODULE COLLECTIONS: PURCHASES
+    match /purchases/{purchaseId} {
+      allow get: if isSignedIn() && isAdmin();
+      allow list: if isSignedIn() && isAdmin();
+      allow create: if isVerifiedUser() && isAdmin() && isValidPurchase(incoming()) && isValidId(purchaseId);
+      allow update: if isVerifiedUser() && isAdmin() && isValidPurchase(incoming()) && isValidId(purchaseId);
+      allow delete: if isVerifiedUser() && isAdmin() && isValidId(purchaseId);
+    }
+
+    // NEW MODULE COLLECTIONS: PAYROLL_PAYMENTS
+    match /payroll_payments/{paymentId} {
+      allow get: if isSignedIn() && (isAdmin() || existing().operatorId == request.auth.uid);
+      allow list: if isSignedIn() && (isAdmin() || resource.data.operatorId == request.auth.uid);
+      allow create: if isVerifiedUser() && isAdmin() && isValidPayrollPayment(incoming()) && isValidId(paymentId);
+      allow update: if isVerifiedUser() && isAdmin() && isValidPayrollPayment(incoming()) && isValidId(paymentId);
+      allow delete: if isVerifiedUser() && isAdmin() && isValidId(paymentId);
+    }
+
+    // NEW MODULE COLLECTIONS: JOURNAL_ENTRIES
+    match /journal_entries/{entryId} {
+      allow get: if isSignedIn() && (isAdmin() || isVerifiedUser());
+      allow list: if isSignedIn() && (isAdmin() || isVerifiedUser());
+      allow create: if isVerifiedUser() && (isAdmin() || isSignedIn()) && isValidJournalEntry(incoming()) && isValidId(entryId);
+      allow update: if isVerifiedUser() && isAdmin() && isValidJournalEntry(incoming()) && isValidId(entryId);
+      allow delete: if isVerifiedUser() && isAdmin() && isValidId(entryId);
+    }
+
+    // NEW MODULE COLLECTIONS: ACCOUNTS (Plan de Cuentas)
+    match /accounts/{accountId} {
+      allow read: if true;
+      allow create: if isVerifiedUser() && isAdmin() && isValidAccount(incoming()) && isValidId(accountId);
+      allow update: if isVerifiedUser() && isAdmin() && isValidAccount(incoming()) && isValidId(accountId);
+      allow delete: if isVerifiedUser() && isAdmin() && isValidId(accountId);
+    }
+
+    // NEW MODULE COLLECTIONS: ATTENDANCE_LOGS
+    match /attendance_logs/{logId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isVerifiedUser() && isValidAttendanceLog(incoming()) && isValidId(logId);
+      allow update: if isVerifiedUser() && isValidAttendanceLog(incoming()) && isValidId(logId);
+      allow delete: if isVerifiedUser() && isAdmin() && isValidId(logId);
+    }
+  }
+}
